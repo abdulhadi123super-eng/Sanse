@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="ur" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ChatApp</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg:#0f0f13;--surface:#18181f;--surface2:#22222d;--border:#2e2e3a;
+    --accent:#6c63ff;--accent2:#a78bfa;--text:#e8e8f0;--muted:#7878a0;
+    --bubble-me:#6c63ff;--bubble-other:#22222d;--online:#22c55e;--danger:#ef4444;
+    color-scheme:dark;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);overflow:hidden;}
+  body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface);}
+
+  /* SETUP */
+  #setup{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:1.5rem;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:2rem;max-width:420px;width:100%;}
+  .card h2{font-size:1.3rem;font-weight:700;margin-bottom:.4rem;}
+  .card p{color:var(--muted);font-size:.85rem;margin-bottom:1.25rem;line-height:1.6;}
+  .field{margin-bottom:.9rem;}
+  .field label{display:block;font-size:.75rem;font-weight:700;color:var(--muted);margin-bottom:.3rem;}
+  .field input{width:100%;padding:.7rem 1rem;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-size:.85rem;outline:none;font-family:monospace;}
+  .field input:focus{border-color:var(--accent);}
+  .btn{width:100%;padding:.8rem;border-radius:10px;border:none;font-size:.95rem;font-weight:700;cursor:pointer;transition:all .2s;}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:hover{background:var(--accent2);}
+  .btn-ghost{background:var(--surface2);color:var(--muted);margin-top:.5rem;}
+  .note{background:var(--surface2);border-radius:10px;padding:.75rem 1rem;font-size:.8rem;color:var(--muted);line-height:1.7;margin-bottom:1rem;}
+  .note code{background:var(--border);padding:.1rem .35rem;border-radius:4px;color:var(--accent2);font-size:.75rem;}
+  .err{background:#2a1010;border:1px solid #6b2020;border-radius:8px;padding:.6rem .9rem;font-size:.82rem;color:#ff9999;margin-top:.75rem;display:none;}
+  .tabs{display:flex;gap:.5rem;margin-bottom:1.25rem;}
+  .tab{flex:1;padding:.6rem;border-radius:8px;border:1.5px solid var(--border);background:none;color:var(--muted);font-size:.85rem;font-weight:600;cursor:pointer;transition:all .2s;}
+  .tab.active{border-color:var(--accent);background:rgba(108,99,255,.1);color:var(--accent);}
+  .tab-content{display:none;}
+  .tab-content.active{display:block;}
+
+  /* APP */
+  #app{display:none;height:100%;}
+  .app-grid{display:grid;grid-template-columns:280px 1fr;height:100%;padding-top:env(safe-area-inset-top,0px);}
+  @media(max-width:650px){
+    .app-grid{grid-template-columns:1fr;}
+    .sidebar{position:fixed;inset:0;z-index:50;transform:translateX(-100%);transition:transform .3s;}
+    .sidebar.open{transform:none;}
+    .mob-menu{display:flex!important;}
+  }
+  .sidebar{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+  .sidebar-top{padding:.9rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.6rem;}
+  .av{width:38px;height:38px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;color:#fff;flex-shrink:0;}
+  .av img{width:100%;height:100%;border-radius:50%;object-fit:cover;}
+  .uname{font-weight:600;font-size:.88rem;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;padding:.35rem;border-radius:7px;display:flex;transition:all .2s;}
+  .icon-btn:hover{background:var(--surface2);color:var(--text);}
+  .search-wrap{padding:.6rem .75rem;}
+  .search-inp{width:100%;padding:.55rem .9rem;border-radius:9px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:.85rem;outline:none;}
+  .search-inp:focus{border-color:var(--accent);}
+  .sec-label{padding:.4rem .9rem;font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:.06em;}
+  .rooms-list{flex:1;overflow-y:auto;padding:.2rem .4rem;}
+  .rooms-list::-webkit-scrollbar{width:3px;}
+  .rooms-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+  .room-item{display:flex;align-items:center;gap:.6rem;padding:.65rem .7rem;border-radius:11px;cursor:pointer;transition:background .15s;}
+  .room-item:hover{background:var(--surface2);}
+  .room-item.active{background:rgba(108,99,255,.15);}
+  .room-ic{font-size:1.2rem;width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border-radius:9px;flex-shrink:0;}
+  .room-nm{font-weight:600;font-size:.88rem;}
+  .room-last{font-size:.75rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .add-room-btn{margin:.6rem;padding:.65rem;border-radius:10px;background:rgba(108,99,255,.08);border:1.5px dashed var(--accent);color:var(--accent);font-size:.85rem;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:.4rem;}
+  .add-room-btn:hover{background:var(--accent);color:#fff;}
+
+  /* CHAT */
+  .chat-area{display:flex;flex-direction:column;background:var(--bg);}
+  .chat-head{background:var(--surface);border-bottom:1px solid var(--border);padding:.8rem 1rem;display:flex;align-items:center;gap:.6rem;flex-shrink:0;}
+  .mob-menu{display:none;background:none;border:none;color:var(--text);cursor:pointer;margin-right:.25rem;}
+  .msgs{flex:1;overflow-y:auto;padding:.9rem 1rem;display:flex;flex-direction:column;gap:.35rem;}
+  .msgs::-webkit-scrollbar{width:3px;}
+  .msgs::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+  .date-div{text-align:center;font-size:.72rem;color:var(--muted);display:flex;align-items:center;gap:.6rem;margin:.5rem 0;}
+  .date-div::before,.date-div::after{content:"";flex:1;height:1px;background:var(--border);}
+  .msg-row{display:flex;gap:.5rem;align-items:flex-end;}
+  .msg-row.me{flex-direction:row-reverse;}
+  .msg-av{width:26px;height:26px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:#fff;flex-shrink:0;}
+  .msg-av img{width:100%;height:100%;border-radius:50%;object-fit:cover;}
+  .msg-grp{display:flex;flex-direction:column;gap:.18rem;max-width:72%;}
+  .me .msg-grp{align-items:flex-end;}
+  .msg-sdr{font-size:.7rem;color:var(--muted);padding:0 .35rem;}
+  .bubble{padding:.5rem .85rem;border-radius:16px;font-size:.9rem;line-height:1.45;word-break:break-word;background:var(--bubble-other);color:var(--text);}
+  .me .bubble{background:var(--bubble-me);color:#fff;}
+  .msg-time{font-size:.65rem;color:var(--muted);padding:0 .35rem;}
+  .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;color:var(--muted);}
+  .no-room{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;color:var(--muted);}
+  .input-wrap{background:var(--surface);border-top:1px solid var(--border);padding:.65rem .85rem;padding-bottom:calc(.65rem + env(safe-area-inset-bottom,0px));display:flex;align-items:flex-end;gap:.45rem;}
+  .msg-inp{flex:1;padding:.6rem .9rem;border-radius:11px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-size:.9rem;outline:none;resize:none;max-height:110px;font-family:inherit;line-height:1.4;}
+  .msg-inp:focus{border-color:var(--accent);}
+  .send-btn{width:38px;height:38px;border-radius:9px;background:var(--accent);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;}
+  .send-btn:hover{background:var(--accent2);transform:scale(1.05);}
+  .send-btn:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+
+  /* MODAL */
+  .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:center;justify-content:center;padding:1rem;backdrop-filter:blur(4px);}
+  .overlay.open{display:flex;}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:1.75rem;max-width:380px;width:100%;}
+  .modal h3{font-size:1.1rem;font-weight:700;margin-bottom:1rem;}
+  .modal input{width:100%;padding:.65rem .9rem;border-radius:9px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-size:.9rem;outline:none;margin-bottom:.65rem;font-family:inherit;}
+  .modal input:focus{border-color:var(--accent);}
+  .modal-btns{display:flex;gap:.6rem;justify-content:flex-end;margin-top:.25rem;}
+  .mbtn{padding:.55rem 1.2rem;border-radius:9px;border:none;font-size:.88rem;font-weight:600;cursor:pointer;}
+  .mbtn-p{background:var(--accent);color:#fff;}
+  .mbtn-g{background:var(--surface2);color:var(--muted);}
+
+  /* TOAST */
+  #toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.65rem 1.2rem;font-size:.85rem;font-weight:500;z-index:999;opacity:0;transition:all .3s;pointer-events:none;white-space:nowrap;}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+
+<!-- SETUP SCREEN -->
+<div id="setup">
+  <div class="card">
+    <div style="font-size:2.5rem;margin-bottom:.6rem">💬</div>
+    <h2>ChatApp Setup</h2>
+    <p>Pehle Supabase URL aur Key darain, phir account banayein ya login karein.</p>
+    <div class="note">
+      <strong>Supabase se keys kaise milti hain:</strong><br>
+      1. <a href="https://supabase.com" target="_blank" style="color:var(--accent)">supabase.com</a> → New Project banayein<br>
+      2. Settings → API → <code>Project URL</code> copy karein<br>
+      3. Settings → API → <code>anon/public</code> key copy karein
+    </div>
+    <div class="field"><label>SUPABASE PROJECT URL</label><input id="cfg-url" placeholder="https://xxxx.supabase.co" type="url"></div>
+    <div class="field"><label>SUPABASE ANON KEY</label><input id="cfg-key" placeholder="eyJhbGci..." type="text"></div>
+    <button class="btn btn-primary" onclick="saveSetup()">Aage Barein →</button>
+    <div id="setup-err" class="err"></div>
+  </div>
+</div>
+
+<!-- AUTH SCREEN -->
+<div id="auth" style="display:none;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:1.5rem;">
+  <div class="card">
+    <div style="font-size:2.5rem;margin-bottom:.6rem">💬</div>
+    <h2 style="margin-bottom:1.25rem">ChatApp</h2>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('login')">Login</button>
+      <button class="tab" onclick="switchTab('signup')">Sign Up</button>
+    </div>
+    <!-- LOGIN -->
+    <div class="tab-content active" id="tab-login">
+      <div class="field"><label>EMAIL</label><input id="l-email" type="email" placeholder="aapka@email.com"></div>
+      <div class="field"><label>PASSWORD</label><input id="l-pass" type="password" placeholder="Password"></div>
+      <button class="btn btn-primary" onclick="doLogin()">Login Karein</button>
+    </div>
+    <!-- SIGNUP -->
+    <div class="tab-content" id="tab-signup">
+      <div class="field"><label>NAAM</label><input id="s-name" type="text" placeholder="Aapka naam"></div>
+      <div class="field"><label>EMAIL</label><input id="s-email" type="email" placeholder="aapka@email.com"></div>
+      <div class="field"><label>PASSWORD</label><input id="s-pass" type="password" placeholder="Password (6+ characters)"></div>
+      <button class="btn btn-primary" onclick="doSignup()">Account Banayein</button>
+    </div>
+    <div id="auth-err" class="err"></div>
+    <button class="btn btn-ghost" onclick="showSetup()" style="margin-top:.75rem;font-size:.8rem">⚙️ Settings Change Karein</button>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <div class="app-grid">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-top">
+        <div class="av" id="nav-av"><span id="nav-init">U</span></div>
+        <div class="uname" id="nav-name">User</div>
+        <button class="icon-btn" onclick="doLogout()" title="Logout">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+      <div class="search-wrap"><input class="search-inp" placeholder="🔍 Room dhoondein..." oninput="filterRooms(this.value)"></div>
+      <div class="sec-label">CHAT ROOMS</div>
+      <div class="rooms-list" id="rooms-list"><div style="padding:1rem;text-align:center;color:var(--muted);font-size:.83rem">Load ho raha hai...</div></div>
+      <button class="add-room-btn" onclick="openRoomModal()">+ Nai Room</button>
+    </aside>
+    <main class="chat-area">
+      <div class="chat-head">
+        <button class="mob-menu" onclick="toggleSidebar()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <span id="ch-icon" style="font-size:1.3rem">💬</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:.95rem" id="ch-name">Room select karein</div>
+          <div style="font-size:.73rem;color:var(--muted)" id="ch-sub">Baat karne ke liye room chunein</div>
+        </div>
+      </div>
+      <div class="msgs" id="msgs">
+        <div class="no-room"><span style="font-size:3.5rem">👈</span><div style="font-weight:600">Room select karein</div><div style="font-size:.85rem">Ya nai room banayein</div></div>
+      </div>
+      <div class="input-wrap" id="input-wrap" style="display:none">
+        <textarea class="msg-inp" id="msg-inp" placeholder="Message likhein..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="send-btn" id="send-btn" onclick="sendMsg()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Room Modal -->
+<div class="overlay" id="room-overlay" onclick="if(event.target===this)closeRoomModal()">
+  <div class="modal">
+    <h3>🏠 Nai Room</h3>
+    <input id="r-name" type="text" placeholder="Room naam (e.g. General)">
+    <input id="r-emoji" type="text" placeholder="Emoji (e.g. 🎮)" maxlength="4" value="💬">
+    <div class="modal-btns">
+      <button class="mbtn mbtn-g" onclick="closeRoomModal()">Cancel</button>
+      <button class="mbtn mbtn-p" onclick="createRoom()">Banayein</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const UK='chatapp_url', KK='chatapp_key';
+let URL_=localStorage.getItem(UK)||'https://sgnggsaywptmnvznvbdr.supabase.co', KEY_=localStorage.getItem(KK)||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNnbmdnc2F5d3B0bW52em52YmRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzNTU0NzQsImV4cCI6MjEwODkzMTQ3NH0.S82CVstQQBoEp-nxBRK5p32dOdc4Lqs3uAPpXU8v9iU';
+let sb=null, me=null, curRoom=null, rooms=[], realtimeCh=null;
+
+// ── INIT ──
+async function init() {
+  if(!URL_||!KEY_){show('setup');return;}
+  try {
+    sb = window.supabase.createClient(URL_, KEY_);
+    const {data:{session}} = await sb.auth.getSession();
+    if(session){me=session.user;showApp();loadRooms();}
+    else show('auth');
+    sb.auth.onAuthStateChange((e,s)=>{
+      if(e==='SIGNED_IN'&&s){me=s.user;showApp();loadRooms();}
+      else if(e==='SIGNED_OUT'){me=null;curRoom=null;show('auth');}
+    });
+  } catch(e){show('setup');}
+}
+
+function show(screen){
+  ['setup','auth','app'].forEach(s=>{
+    const el=document.getElementById(s);
+    el.style.display = s===screen ? (s==='app'?'block':'flex') : 'none';
+  });
+}
+
+function showApp(){
+  show('app');
+  const name = me?.user_metadata?.full_name || me?.email?.split('@')[0] || 'User';
+  document.getElementById('nav-name').textContent = name;
+  document.getElementById('nav-init').textContent = name[0].toUpperCase();
+}
+
+// ── SETUP ──
+function saveSetup(){
+  const url=document.getElementById('cfg-url').value.trim();
+  const key=document.getElementById('cfg-key').value.trim();
+  if(!url||!key){showErr('setup-err','URL aur Key zaroori hain!');return;}
+  localStorage.setItem(UK,url);localStorage.setItem(KK,key);
+  URL_=url;KEY_=key;location.reload();
+}
+function showSetup(){show('setup');}
+
+// ── AUTH ──
+function switchTab(t){
+  document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('active',i===(t==='login'?0:1)));
+  document.querySelectorAll('.tab-content').forEach((c,i)=>c.classList.toggle('active',i===(t==='login'?0:1)));
+  hideErr('auth-err');
+}
+
+async function doLogin(){
+  const email=document.getElementById('l-email').value.trim();
+  const pass=document.getElementById('l-pass').value;
+  if(!email||!pass){showErr('auth-err','Email aur password darain!');return;}
+  const {error}=await sb.auth.signInWithPassword({email,password:pass});
+  if(error)showErr('auth-err',error.message==='Invalid login credentials'?'Email ya password galat hai!':error.message);
+}
+
+async function doSignup(){
+  const name=document.getElementById('s-name').value.trim();
+  const email=document.getElementById('s-email').value.trim();
+  const pass=document.getElementById('s-pass').value;
+  if(!name||!email||!pass){showErr('auth-err','Tamam fields zaroori hain!');return;}
+  if(pass.length<6){showErr('auth-err','Password kam az kam 6 characters ka hona chahiye!');return;}
+  const {error}=await sb.auth.signUp({email,password:pass,options:{data:{full_name:name}}});
+  if(error)showErr('auth-err',error.message);
+  else{toast('Account ban gaya! Email confirm karein phir login karein ✅');switchTab('login');}
+}
+
+async function doLogout(){await sb?.auth.signOut();if(realtimeCh)sb.removeChannel(realtimeCh);}
+
+// ── ROOMS ──
+async function loadRooms(){
+  try{
+    const {data,error}=await sb.from('rooms').select('*').order('created_at',{ascending:true});
+    if(error)throw error;
+    rooms=data||[];
+    if(!rooms.length)await seedRooms();
+    else renderRooms(rooms);
+  }catch(e){
+    document.getElementById('rooms-list').innerHTML='<div style="padding:1rem;color:#ff9999;font-size:.8rem">⚠️ SQL tables nahi hain. Admin panel mein SQL run karein!</div>';
+  }
+}
+
+async function seedRooms(){
+  const {data}=await sb.from('rooms').insert([
+    {name:'General',emoji:'💬',created_by:me.id},
+    {name:'Random',emoji:'🎲',created_by:me.id},
+  ]).select();
+  rooms=data||[];renderRooms(rooms);
+}
+
+function renderRooms(list){
+  const el=document.getElementById('rooms-list');
+  if(!list.length){el.innerHTML='<div style="padding:1rem;text-align:center;color:var(--muted);font-size:.83rem">Koi room nahi</div>';return;}
+  el.innerHTML=list.map(r=>`
+    <div class="room-item${curRoom?.id===r.id?' active':''}" onclick="selectRoom(${r.id})">
+      <div class="room-ic">${r.emoji||'💬'}</div>
+      <div style="flex:1;min-width:0"><div class="room-nm">${esc(r.name)}</div><div class="room-last">Tap karein</div></div>
+    </div>`).join('');
+}
+
+function filterRooms(q){renderRooms(q?rooms.filter(r=>r.name.toLowerCase().includes(q.toLowerCase())):rooms);}
+
+async function selectRoom(id){
+  curRoom=rooms.find(r=>r.id===id);
+  if(!curRoom)return;
+  renderRooms(rooms);
+  document.getElementById('ch-icon').textContent=curRoom.emoji||'💬';
+  document.getElementById('ch-name').textContent=curRoom.name;
+  document.getElementById('ch-sub').textContent='Real-time chat';
+  document.getElementById('input-wrap').style.display='flex';
+  closeSidebar();
+  await loadMsgs();
+  subscribeRoom();
+}
+
+// ── MESSAGES ──
+async function loadMsgs(){
+  if(!curRoom)return;
+  try{
+    const {data}=await sb.from('messages')
+      .select('*,profiles:sender_id(full_name,avatar_url)')
+      .eq('room_id',curRoom.id).order('created_at',{ascending:true}).limit(100);
+    renderMsgs(data||[]);
+  }catch(e){console.error(e);}
+}
+
+function renderMsgs(list){
+  const el=document.getElementById('msgs');
+  if(!list.length){el.innerHTML='<div class="empty"><span style="font-size:3rem">👋</span><div>Pehla message bhijin!</div></div>';return;}
+  let html='',lastDate='',lastSender='';
+  list.forEach(m=>{
+    const d=new Date(m.created_at);
+    const ds=d.toLocaleDateString('ur-PK',{day:'numeric',month:'short'});
+    if(ds!==lastDate){html+=`<div class="date-div">${ds}</div>`;lastDate=ds;lastSender='';}
+    const isMe=m.sender_id===me?.id;
+    const name=m.profiles?.full_name||'User';
+    const init=name[0].toUpperCase();
+    const t=d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+    const showAv=lastSender!==m.sender_id;
+    lastSender=m.sender_id;
+    html+=`<div class="msg-row${isMe?' me':''}">
+      ${showAv&&!isMe?`<div class="msg-av">${init}</div>`:`<div style="width:26px"></div>`}
+      <div class="msg-grp">
+        ${showAv&&!isMe?`<div class="msg-sdr">${esc(name)}</div>`:''}
+        <div class="bubble">${esc(m.content)}</div>
+        <div class="msg-time">${t}</div>
+      </div>
+    </div>`;
+  });
+  el.innerHTML=html;
+  el.scrollTop=el.scrollHeight;
+}
+
+function subscribeRoom(){
+  if(realtimeCh)sb.removeChannel(realtimeCh);
+  realtimeCh=sb.channel('room-'+curRoom.id)
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`room_id=eq.${curRoom.id}`},()=>loadMsgs())
+    .subscribe();
+}
+
+async function sendMsg(){
+  const inp=document.getElementById('msg-inp');
+  const txt=inp.value.trim();
+  if(!txt||!curRoom||!me)return;
+  inp.value='';inp.style.height='';
+  document.getElementById('send-btn').disabled=true;
+  await sb.from('messages').insert({room_id:curRoom.id,sender_id:me.id,content:txt});
+  document.getElementById('send-btn').disabled=false;
+}
+
+function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}}
+function autoResize(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,110)+'px';}
+
+// ── ROOM MODAL ──
+function openRoomModal(){document.getElementById('room-overlay').classList.add('open');document.getElementById('r-name').focus();}
+function closeRoomModal(){document.getElementById('room-overlay').classList.remove('open');}
+async function createRoom(){
+  const name=document.getElementById('r-name').value.trim();
+  const emoji=document.getElementById('r-emoji').value.trim()||'💬';
+  if(!name)return;
+  const {data,error}=await sb.from('rooms').insert({name,emoji,created_by:me.id}).select().single();
+  if(error){toast('Error: '+error.message);return;}
+  rooms.push(data);renderRooms(rooms);closeRoomModal();selectRoom(data.id);
+}
+
+// ── SIDEBAR (mobile) ──
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');}
+function closeSidebar(){document.getElementById('sidebar').classList.remove('open');}
+
+// ── UTILS ──
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function showErr(id,msg){const e=document.getElementById(id);e.textContent=msg;e.style.display='block';}
+function hideErr(id){document.getElementById(id).style.display='none';}
+let toastT;
+function toast(msg){const e=document.getElementById('toast');e.textContent=msg;e.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove('show'),3000);}
+
+init();
+</script>
+</body>
+</html>
