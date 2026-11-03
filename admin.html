@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="ur" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ChatApp — Admin Panel</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #0c0c10; --surface: #14141c; --surface2: #1e1e28; --border: #2a2a38;
+    --accent: #6c63ff; --accent2: #a78bfa; --danger: #ef4444; --success: #22c55e;
+    --warn: #f59e0b; --text: #e8e8f0; --muted: #7878a0; color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg:#f0f0f7;--surface:#fff;--surface2:#f5f5fa;--border:#e0e0ee;
+      --text:#1a1a2e;--muted:#8080a0;color-scheme:light;
+    }
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
+  body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface);}
+
+  /* SETUP */
+  #setup {display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:2rem;}
+  .setup-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:2.5rem;max-width:480px;width:100%;}
+  .setup-card h2{font-size:1.4rem;font-weight:700;margin-bottom:.5rem;}
+  .setup-card p{color:var(--muted);font-size:.9rem;margin-bottom:1.5rem;}
+  .field{margin-bottom:1rem;}
+  .field label{display:block;font-size:.8rem;font-weight:600;color:var(--muted);margin-bottom:.35rem;}
+  .field input{width:100%;padding:.7rem 1rem;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-size:.9rem;outline:none;font-family:monospace;}
+  .field input:focus{border-color:var(--accent);}
+  .btn{padding:.65rem 1.4rem;border-radius:10px;border:none;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s;}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:hover{background:var(--accent2);}
+  .btn-danger{background:var(--danger);color:#fff;}
+  .btn-ghost{background:var(--surface2);color:var(--muted);}
+  .btn-ghost:hover{color:var(--text);}
+  .btn-sm{padding:.4rem .9rem;font-size:.8rem;}
+
+  /* ADMIN LAYOUT */
+  #admin{display:none;height:100%;}
+  .admin-grid{display:grid;grid-template-columns:220px 1fr;height:100%;padding-top:env(safe-area-inset-top,0px);}
+  @media(max-width:700px){.admin-grid{grid-template-columns:1fr;}.admin-nav{display:none;}}
+
+  /* NAV */
+  .admin-nav{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+  .nav-brand{padding:1.25rem 1rem;border-bottom:1px solid var(--border);}
+  .nav-brand h2{font-size:1rem;font-weight:700;}
+  .nav-brand p{font-size:.75rem;color:var(--muted);margin-top:.2rem;}
+  .nav-items{padding:.5rem;flex:1;}
+  .nav-item{display:flex;align-items:center;gap:.65rem;padding:.7rem .85rem;border-radius:10px;cursor:pointer;font-size:.88rem;font-weight:500;transition:background .15s;color:var(--muted);}
+  .nav-item:hover{background:var(--surface2);color:var(--text);}
+  .nav-item.active{background:rgba(108,99,255,.15);color:var(--accent);}
+  .nav-item svg{flex-shrink:0;}
+  .nav-bottom{padding:.75rem;border-top:1px solid var(--border);}
+  .admin-user{display:flex;align-items:center;gap:.6rem;padding:.5rem .75rem;border-radius:10px;background:var(--surface2);}
+  .admin-avatar{width:30px;height:30px;border-radius:50%;border:2px solid var(--accent);}
+
+  /* MAIN CONTENT */
+  .admin-main{overflow-y:auto;background:var(--bg);}
+  .admin-main::-webkit-scrollbar{width:5px;}
+  .admin-main::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+  .page{display:none;padding:1.5rem;max-width:1100px;}
+  .page.active{display:block;}
+  .page-header{margin-bottom:1.5rem;}
+  .page-header h1{font-size:1.5rem;font-weight:700;}
+  .page-header p{color:var(--muted);font-size:.9rem;margin-top:.3rem;}
+
+  /* STATS */
+  .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:1.5rem;}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:1.25rem;}
+  .stat-label{font-size:.78rem;color:var(--muted);font-weight:600;margin-bottom:.5rem;}
+  .stat-value{font-size:2rem;font-weight:800;}
+  .stat-sub{font-size:.78rem;color:var(--muted);margin-top:.3rem;}
+  .stat-icon{font-size:1.5rem;float:right;margin-top:-.25rem;}
+
+  /* TABLE */
+  .table-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;}
+  .table-header{padding:1rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;}
+  .table-header h3{font-size:1rem;font-weight:700;}
+  .table-search{padding:.5rem .85rem;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:.85rem;outline:none;width:200px;}
+  .table-search:focus{border-color:var(--accent);}
+  table{width:100%;border-collapse:collapse;}
+  th{text-align:left;padding:.7rem 1.25rem;font-size:.75rem;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border);background:var(--surface);}
+  td{padding:.75rem 1.25rem;font-size:.85rem;border-bottom:1px solid var(--border);}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:var(--surface2);}
+  .badge{display:inline-block;padding:.2rem .55rem;border-radius:6px;font-size:.72rem;font-weight:700;}
+  .badge-green{background:rgba(34,197,94,.15);color:var(--success);}
+  .badge-red{background:rgba(239,68,68,.15);color:var(--danger);}
+  .badge-purple{background:rgba(108,99,255,.15);color:var(--accent);}
+  .badge-yellow{background:rgba(245,158,11,.15);color:var(--warn);}
+  .avatar-cell{display:flex;align-items:center;gap:.6rem;}
+  .mini-avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;}
+  .loading-row td{text-align:center;color:var(--muted);padding:2rem;}
+  .action-btns{display:flex;gap:.4rem;}
+  .pagination{padding:.75rem 1.25rem;display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);font-size:.8rem;color:var(--muted);}
+
+  /* SQL PANEL */
+  .sql-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:1rem;}
+  .sql-card h3{padding:1rem 1.25rem;border-bottom:1px solid var(--border);font-size:.95rem;font-weight:700;}
+  .sql-box{padding:1rem 1.25rem;}
+  pre{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:1rem;font-size:.8rem;overflow-x:auto;line-height:1.7;color:var(--accent2);}
+  .copy-btn{margin-top:.5rem;display:flex;align-items:center;gap:.4rem;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.45rem .9rem;border-radius:8px;font-size:.8rem;cursor:pointer;transition:all .2s;}
+  .copy-btn:hover{border-color:var(--accent);color:var(--accent);}
+
+  /* TOAST */
+  #toast{position:fixed;bottom:2rem;right:2rem;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:.8rem 1.2rem;font-size:.88rem;font-weight:500;box-shadow:0 8px 30px rgba(0,0,0,.3);z-index:999;transform:translateY(20px);opacity:0;transition:all .3s;pointer-events:none;}
+  #toast.show{transform:none;opacity:1;}
+  #toast.success{border-color:var(--success);color:var(--success);}
+  #toast.danger{border-color:var(--danger);color:var(--danger);}
+
+  /* MODAL */
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center;padding:1rem;backdrop-filter:blur(4px);}
+  .modal-overlay.open{display:flex;}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:2rem;max-width:420px;width:100%;}
+  .modal h3{font-size:1.1rem;font-weight:700;margin-bottom:1rem;}
+  .modal-btns{display:flex;gap:.75rem;justify-content:flex-end;margin-top:1.25rem;}
+</style>
+</head>
+<body>
+
+<!-- SETUP -->
+<div id="setup">
+  <div class="setup-card">
+    <div style="font-size:2.5rem;margin-bottom:.75rem">🛡️</div>
+    <h2>Admin Login</h2>
+    <p>Admin email aur password se login karein.</p>
+    <div class="field"><label>EMAIL</label><input id="a-email" type="email" placeholder="admin@email.com"></div>
+    <div class="field"><label>PASSWORD</label><input id="a-pass" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')adminLogin()"></div>
+    <div id="a-err" style="display:none;color:#ff6b6b;font-size:.82rem;margin-bottom:.75rem"></div>
+    <button class="btn btn-primary" onclick="adminLogin()" style="width:100%;padding:.85rem">Login →</button>
+  </div>
+</div>
+
+<!-- ADMIN APP -->
+<div id="admin">
+  <div class="admin-grid">
+    <!-- NAV -->
+    <nav class="admin-nav">
+      <div class="nav-brand">
+        <h2>🛡️ Admin Panel</h2>
+        <p>ChatApp Backend</p>
+      </div>
+      <div class="nav-items">
+        <div class="nav-item active" onclick="showPage('dashboard')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> Dashboard
+        </div>
+        <div class="nav-item" onclick="showPage('users')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Users
+        </div>
+        <div class="nav-item" onclick="showPage('rooms')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Rooms
+        </div>
+        <div class="nav-item" onclick="showPage('messages')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Messages
+        </div>
+        <div class="nav-item" onclick="showPage('sql')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> SQL Setup
+        </div>
+        <div class="nav-item" onclick="showPage('settings')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 19.07l1.41-1.41M19.07 19.07l-1.41-1.41M4.93 4.93l1.41 1.41M21 12h-2M5 12H3M12 19v2M12 3V1"/></svg> Settings
+        </div>
+      </div>
+      <div class="nav-bottom">
+        <div class="admin-user">
+          <img id="admin-avatar" class="admin-avatar" src="" alt="">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="admin-email">Admin</div>
+            <div style="font-size:.7rem;color:var(--success)">● Super Admin</div>
+          </div>
+          <button onclick="logoutAdmin()" title="Logout" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.7rem">Exit</button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- MAIN -->
+    <main class="admin-main">
+
+      <!-- DASHBOARD -->
+      <div class="page active" id="page-dashboard">
+        <div class="page-header"><h1>📊 Dashboard</h1><p>ChatApp ka overview</p></div>
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-label">TOTAL USERS</div><div class="stat-value" id="s-users">—</div><div class="stat-sub">Registered accounts</div></div>
+          <div class="stat-card"><div class="stat-icon">🏠</div><div class="stat-label">TOTAL ROOMS</div><div class="stat-value" id="s-rooms">—</div><div class="stat-sub">Chat rooms</div></div>
+          <div class="stat-card"><div class="stat-icon">💬</div><div class="stat-label">TOTAL MESSAGES</div><div class="stat-value" id="s-msgs">—</div><div class="stat-sub">Sent messages</div></div>
+          <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-label">TODAY'S MESSAGES</div><div class="stat-value" id="s-today">—</div><div class="stat-sub">Last 24 hours</div></div>
+        </div>
+        <div class="table-card">
+          <div class="table-header"><h3>🕐 Recent Messages</h3></div>
+          <table><thead><tr><th>User</th><th>Room</th><th>Message</th><th>Time</th></tr></thead>
+          <tbody id="recent-msgs"><tr class="loading-row"><td colspan="4">Load ho raha hai...</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- USERS -->
+      <div class="page" id="page-users">
+        <div class="page-header"><h1>👥 Users</h1><p>Tamam registered users</p></div>
+        <div class="table-card">
+          <div class="table-header">
+            <h3>Users List</h3>
+            <input class="table-search" type="search" placeholder="Search..." id="user-search" oninput="filterTable('users-tbody', this.value, [1,2])">
+          </div>
+          <table><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Joined</th><th>Actions</th></tr></thead>
+          <tbody id="users-tbody"><tr class="loading-row"><td colspan="5">Load ho raha hai...</td></tr></tbody></table>
+          <div class="pagination" id="users-pagination"></div>
+        </div>
+      </div>
+
+      <!-- ROOMS -->
+      <div class="page" id="page-rooms">
+        <div class="page-header"><h1>🏠 Rooms</h1><p>Tamam chat rooms manage karein</p></div>
+        <div class="table-card">
+          <div class="table-header">
+            <h3>Rooms List</h3>
+            <button class="btn btn-primary btn-sm" onclick="openCreateRoom()">+ Nai Room</button>
+          </div>
+          <table><thead><tr><th>Emoji</th><th>Name</th><th>Messages</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="rooms-tbody"><tr class="loading-row"><td colspan="5">Load ho raha hai...</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- MESSAGES -->
+      <div class="page" id="page-messages">
+        <div class="page-header"><h1>💬 Messages</h1><p>Tamam messages monitor karein</p></div>
+        <div class="table-card">
+          <div class="table-header">
+            <h3>All Messages</h3>
+            <input class="table-search" type="search" placeholder="Search..." id="msg-search" oninput="filterTable('msgs-tbody', this.value, [0,1,2])">
+          </div>
+          <table><thead><tr><th>User</th><th>Room</th><th>Content</th><th>Time</th><th>Actions</th></tr></thead>
+          <tbody id="msgs-tbody"><tr class="loading-row"><td colspan="5">Load ho raha hai...</td></tr></tbody></table>
+          <div class="pagination" id="msgs-pagination"></div>
+        </div>
+      </div>
+
+      <!-- SQL SETUP -->
+      <div class="page" id="page-sql">
+        <div class="page-header"><h1>💾 SQL Setup</h1><p>Supabase mein yeh SQL run karein</p></div>
+        <div class="sql-card">
+          <h3>Step 1: Tables Banayein</h3>
+          <div class="sql-box">
+            <pre id="sql-create">-- Supabase SQL Editor mein yeh paste karein:
+
+-- Profiles table (users ki info)
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
+  email TEXT,
+  full_name TEXT,
+  avatar_url TEXT,
+  is_banned BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Rooms table (chat rooms)
+CREATE TABLE IF NOT EXISTS public.rooms (
+  id BIGSERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  emoji TEXT DEFAULT '💬',
+  created_by UUID REFERENCES public.profiles(id),
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Messages table
+CREATE TABLE IF NOT EXISTS public.messages (
+  id BIGSERIAL PRIMARY KEY,
+  room_id BIGINT REFERENCES public.rooms(id) ON DELETE CASCADE,
+  sender_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  content TEXT NOT NULL,
+  is_deleted BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_messages_room ON public.messages(room_id);
+CREATE INDEX IF NOT EXISTS idx_messages_created ON public.messages(created_at DESC);</pre>
+            <button class="copy-btn" onclick="copySQL('sql-create')">📋 Copy SQL</button>
+          </div>
+        </div>
+        <div class="sql-card">
+          <h3>Step 2: RLS Policies (Security)</h3>
+          <div class="sql-box">
+            <pre id="sql-rls">-- Row Level Security enable karein
+
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
+
+-- Profiles: har koi dekh sakta hai, sirf apna update kar sakta hai
+CREATE POLICY "profiles_select" ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "profiles_insert" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "profiles_update" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+
+-- Rooms: login users dekh saktay hain, create bhi kar saktay hain
+CREATE POLICY "rooms_select" ON public.rooms FOR SELECT USING (true);
+CREATE POLICY "rooms_insert" ON public.rooms FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+
+-- Messages: login users dekh aur likh saktay hain, sirf apna delete
+CREATE POLICY "messages_select" ON public.messages FOR SELECT USING (true);
+CREATE POLICY "messages_insert" ON public.messages FOR INSERT WITH CHECK (auth.uid() = sender_id);
+CREATE POLICY "messages_delete" ON public.messages FOR DELETE USING (auth.uid() = sender_id);
+
+-- Realtime enable karein
+ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;</pre>
+            <button class="copy-btn" onclick="copySQL('sql-rls')">📋 Copy SQL</button>
+          </div>
+        </div>
+        <div class="sql-card">
+          <h3>Step 3: Google Auth Setup</h3>
+          <div class="sql-box" style="color:var(--muted);font-size:.88rem;line-height:1.8">
+            <p>1. Supabase Dashboard → <strong>Authentication</strong> → <strong>Providers</strong></p>
+            <p>2. <strong>Google</strong> enable karein</p>
+            <p>3. <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent)">Google Cloud Console</a> mein OAuth 2.0 credentials banayein</p>
+            <p>4. Authorized redirect URI mein add karein:<br>
+              <code style="background:var(--surface2);padding:.2rem .4rem;border-radius:5px;font-family:monospace">https://[YOUR-PROJECT].supabase.co/auth/v1/callback</code>
+            </p>
+            <p>5. Client ID aur Secret Supabase mein paste karein</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="page" id="page-settings">
+        <div class="page-header"><h1>⚙️ Settings</h1><p>Admin panel configuration</p></div>
+        <div class="table-card" style="padding:1.5rem">
+          <h3 style="margin-bottom:1rem">Connection Info</h3>
+          <div style="font-size:.88rem;color:var(--muted);line-height:2">
+            <div>URL: <code style="color:var(--text)" id="disp-url"></code></div>
+            <div>Status: <span class="badge badge-green">Connected</span></div>
+          </div>
+          <div style="margin-top:1.5rem;display:flex;gap:.75rem;flex-wrap:wrap">
+            <button class="btn btn-ghost" onclick="resetConfig()">🔄 Config Reset Karein</button>
+            <button class="btn btn-danger btn-sm" onclick="if(confirm('Sab data delete hoga!'))deleteAllMessages()">🗑️ All Messages Delete</button>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- Modals -->
+<div class="modal-overlay" id="delete-modal">
+  <div class="modal">
+    <h3>🗑️ Delete Confirm karein</h3>
+    <p style="color:var(--muted);font-size:.9rem" id="delete-msg">Kya aap sure hain?</p>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeDeleteModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDelete()">Delete Karein</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="room-modal">
+  <div class="modal">
+    <h3>🏠 Nai Room Banayein</h3>
+    <div class="field"><label>Room Name</label><input id="r-name" type="text" placeholder="e.g. General"></div>
+    <div class="field"><label>Emoji</label><input id="r-emoji" type="text" placeholder="💬" maxlength="4" value="💬"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="document.getElementById('room-modal').classList.remove('open')">Cancel</button>
+      <button class="btn btn-primary" onclick="adminCreateRoom()">Banayein</button>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const SURL = 'https://bzfopprzhgiqfpczhher.supabase.co', ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ6Zm9wcHJ6aGdpcWZwY3poaGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzNTMwMTAsImV4cCI6MjEwODkyOTAxMH0.zfl2uoqovUzFVV3v8Pjdlz-vfdJ9qhPNyri0qMggnws';
+try{localStorage.removeItem('chatapp_admin_key');localStorage.removeItem('chatapp_admin_url');}catch(e){}
+let sb = null, pendingDelete = null, allUsers=[], allMsgs=[], allRooms=[];
+
+function showLogin(msg) {
+  document.getElementById('admin').style.display='none';
+  document.getElementById('setup').style.display='flex';
+  const e=document.getElementById('a-err');
+  if(msg){e.textContent=msg;e.style.display='block';}else e.style.display='none';
+}
+async function checkAdmin() {
+  const { data, error } = await sb.rpc('is_admin');
+  return !error && data === true;
+}
+async function adminLogin() {
+  const email = document.getElementById('a-email').value.trim();
+  const password = document.getElementById('a-pass').value;
+  if (!email || !password) { showLogin('Email aur password darain'); return; }
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) { showLogin('Login fail: ' + error.message); return; }
+  await init();
+}
+async function init() {
+  sb = sb || window.supabase.createClient(SURL, ANON);
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { showLogin(); return; }
+  if (!(await checkAdmin())) { await sb.auth.signOut(); showLogin('Ye account admin nahi hai'); return; }
+  const user = session.user;
+  document.getElementById('admin-email').textContent = user.email || 'Admin';
+  document.getElementById('admin-avatar').src = user.user_metadata?.avatar_url || 'https://ui-avatars.com/api/?name=Admin&background=6c63ff&color=fff';
+  document.getElementById('disp-url').textContent = SURL;
+  document.getElementById('setup').style.display = 'none';
+  document.getElementById('admin').style.display = 'block';
+  await loadAll();
+}
+
+async function loadAll() {
+  await Promise.all([loadStats(), loadUsers(), loadRooms()]);
+  await loadMessages();
+}
+
+async function loadStats() {
+  try {
+    const [{ count: uc }, { count: rc }, { count: mc }] = await Promise.all([
+      sb.from('profiles').select('*', { count:'exact', head:true }),
+      sb.from('rooms').select('*', { count:'exact', head:true }),
+      sb.from('messages').select('*', { count:'exact', head:true })
+    ]);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const { count: tc } = await sb.from('messages').select('*', { count:'exact', head:true }).gte('created_at', today.toISOString());
+    document.getElementById('s-users').textContent = uc||0;
+    document.getElementById('s-rooms').textContent = rc||0;
+    document.getElementById('s-msgs').textContent = mc||0;
+    document.getElementById('s-today').textContent = tc||0;
+  } catch(e) { console.error(e); }
+}
+
+async function loadUsers() {
+  try {
+    const { data } = await sb.from('profiles').select('*').order('created_at', { ascending: false });
+    allUsers = data || [];
+    renderUsers(allUsers);
+  } catch(e) { document.getElementById('users-tbody').innerHTML = '<tr class="loading-row"><td colspan="5">Table nahi mili. SQL run karein.</td></tr>'; }
+}
+
+function renderUsers(list) {
+  const el = document.getElementById('users-tbody');
+  if (!list.length) { el.innerHTML = '<tr class="loading-row"><td colspan="5">Koi user nahi</td></tr>'; return; }
+  el.innerHTML = list.map((u,i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td><div class="avatar-cell"><img class="mini-avatar" src="${u.avatar_url||`https://ui-avatars.com/api/?name=${encodeURIComponent(u.full_name||'U')}&background=6c63ff&color=fff`}" alt="">${escH(u.full_name||'—')}</div></td>
+      <td>${escH(u.email||'—')}</td>
+      <td>${new Date(u.created_at).toLocaleDateString('ur-PK')}</td>
+      <td><div class="action-btns">
+        ${u.is_banned ? `<button class="btn btn-sm" onclick="unbanUser('${u.id}')" style="background:rgba(34,197,94,.1);color:var(--success)">Unban</button>` : `<button class="btn btn-danger btn-sm" onclick="banUser('${u.id}')">Ban</button>`}
+        <button class="btn btn-ghost btn-sm" onclick="deleteUser('${u.id}')">Delete</button>
+      </div></td>
+    </tr>`).join('');
+}
+
+async function loadRooms() {
+  try {
+    let { data, error } = await sb.from('rooms').select('*, messages(count)').order('created_at', { ascending: true });
+    if (error) ({ data } = await sb.from('rooms').select('*').order('created_at', { ascending: true }));
+    allRooms = data || [];
+    renderRooms(allRooms);
+  } catch(e) { console.error(e); }
+}
+
+function renderRooms(list) {
+  const el = document.getElementById('rooms-tbody');
+  if (!list.length) { el.innerHTML = '<tr class="loading-row"><td colspan="5">Koi room nahi</td></tr>'; return; }
+  el.innerHTML = list.map(r => `<tr>
+    <td style="font-size:1.3rem">${r.emoji||'💬'}</td>
+    <td><strong>${escH(r.name)}</strong></td>
+    <td><span class="badge badge-purple">${r.messages?.[0]?.count||0}</span></td>
+    <td style="color:var(--muted);font-size:.8rem">${new Date(r.created_at).toLocaleDateString('ur-PK')}</td>
+    <td><div class="action-btns">
+      <button class="btn btn-danger btn-sm" onclick="deleteRoom(${r.id},'${escH(r.name)}')">Delete</button>
+    </div></td>
+  </tr>`).join('');
+}
+
+function pvA(c){c=c||'';return c.startsWith('[img]')?'📷 Photo':c.startsWith('[aud]')?'🎤 Voice message':c;}
+async function loadMessages() {
+  try {
+    const { data, error } = await sb.from('messages').select('*').order('created_at', { ascending: false }).limit(200);
+    if (error) { toast('Messages error: ' + error.message, 'danger'); return; }
+    const um = {}, rm = {};
+    allUsers.forEach(u => um[u.id] = u); allRooms.forEach(r => rm[r.id] = r);
+    allMsgs = (data || []).map(m => ({ ...m, profiles: um[m.sender_id], rooms: rm[m.room_id], content: pvA(m.content) }));
+    renderMessages(allMsgs);
+    const el = document.getElementById('recent-msgs');
+    const recent = allMsgs.slice(0, 10);
+    if (!recent.length) { el.innerHTML = '<tr class="loading-row"><td colspan="4">Koi message nahi</td></tr>'; return; }
+    el.innerHTML = recent.map(m => `<tr>
+      <td>${escH(m.profiles?.full_name||'Unknown')}</td>
+      <td><span class="badge badge-purple">${escH(m.rooms?.name||'—')}</span></td>
+      <td>${escH(m.content?.substring(0,60)||'—')}${m.content?.length>60?'...':''}</td>
+      <td style="color:var(--muted);font-size:.78rem">${new Date(m.created_at).toLocaleString('ur-PK')}</td>
+    </tr>`).join('');
+  } catch(e) { console.error(e); }
+}
+
+function renderMessages(list) {
+  const el = document.getElementById('msgs-tbody');
+  if (!list.length) { el.innerHTML = '<tr class="loading-row"><td colspan="5">Koi message nahi</td></tr>'; return; }
+  el.innerHTML = list.map(m => `<tr>
+    <td>${escH(m.profiles?.full_name||'Unknown')}</td>
+    <td><span class="badge badge-purple">${escH(m.rooms?.name||'—')}</span></td>
+    <td>${escH(m.content?.substring(0,80)||'[Deleted]')}${(m.content?.length||0)>80?'...':''}</td>
+    <td style="color:var(--muted);font-size:.78rem">${new Date(m.created_at).toLocaleString('ur-PK')}</td>
+    <td><button class="btn btn-danger btn-sm" onclick="deleteMsg(${m.id})">Delete</button></td>
+  </tr>`).join('');
+}
+
+// ─── ACTIONS ─────────────────────────────────────────────
+async function banUser(id) {
+  await sb.from('profiles').update({ is_banned: true }).eq('id', id);
+  toast('User ban ho gaya', 'success'); loadUsers();
+}
+async function unbanUser(id) {
+  await sb.from('profiles').update({ is_banned: false }).eq('id', id);
+  toast('User unban ho gaya', 'success'); loadUsers();
+}
+
+let deleteTarget = null, deleteType = null;
+function deleteUser(id) { deleteTarget=id; deleteType='user'; document.getElementById('delete-msg').textContent='Is user ko delete karein? Yeh permanent hai.'; document.getElementById('delete-modal').classList.add('open'); }
+function deleteRoom(id, name) { deleteTarget=id; deleteType='room'; document.getElementById('delete-msg').textContent=`"${name}" room delete karein? Sab messages bhi delete ho jayenge.`; document.getElementById('delete-modal').classList.add('open'); }
+function deleteMsg(id) { deleteTarget=id; deleteType='msg'; document.getElementById('delete-msg').textContent='Yeh message permanently delete ho jayega.'; document.getElementById('delete-modal').classList.add('open'); }
+function closeDeleteModal() { document.getElementById('delete-modal').classList.remove('open'); }
+
+async function confirmDelete() {
+  closeDeleteModal();
+  try {
+    if (deleteType==='user') await sb.from('profiles').delete().eq('id', deleteTarget);
+    else if (deleteType==='room') await sb.from('rooms').delete().eq('id', deleteTarget);
+    else if (deleteType==='msg') await sb.from('messages').delete().eq('id', deleteTarget);
+    toast('Delete ho gaya!', 'success'); await loadAll();
+  } catch(e) { toast('Error: ' + e.message, 'danger'); }
+}
+
+async function deleteAllMessages() {
+  await sb.from('messages').delete().neq('id', -1);
+  toast('Sab messages delete ho gaye', 'success'); loadAll();
+}
+
+function openCreateRoom() { document.getElementById('room-modal').classList.add('open'); }
+async function adminCreateRoom() {
+  const name = document.getElementById('r-name').value.trim();
+  const emoji = document.getElementById('r-emoji').value.trim()||'💬';
+  if (!name) return;
+  await sb.from('rooms').insert({ name, emoji });
+  document.getElementById('room-modal').classList.remove('open');
+  toast('Room ban gayi!', 'success'); loadRooms();
+}
+
+async function resetConfig() { await sb?.auth.signOut(); location.reload(); }
+async function logoutAdmin() { await sb?.auth.signOut(); location.reload(); }
+
+// ─── UI HELPERS ───────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+
+function filterTable(tbodyId, q, cols) {
+  const rows = document.getElementById(tbodyId).querySelectorAll('tr:not(.loading-row)');
+  const lq = q.toLowerCase();
+  rows.forEach(r => {
+    const cells = r.querySelectorAll('td');
+    const match = cols.some(i => cells[i]?.textContent.toLowerCase().includes(lq));
+    r.style.display = match || !q ? '' : 'none';
+  });
+}
+
+function copySQL(id) {
+  navigator.clipboard.writeText(document.getElementById(id).textContent);
+  toast('SQL copy ho gaya!', 'success');
+}
+
+let toastTimer;
+function toast(msg, type='success') {
+  const el = document.getElementById('toast');
+  el.textContent = (type==='success'?'✅ ':'❌ ') + msg;
+  el.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className='', 3000);
+}
+
+function escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+window.addEventListener('click', e => {
+  if (e.target === document.getElementById('delete-modal')) closeDeleteModal();
+  if (e.target === document.getElementById('room-modal')) document.getElementById('room-modal').classList.remove('open');
+});
+
+init();
+</script>
+</body>
+</html>
